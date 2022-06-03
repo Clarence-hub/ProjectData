@@ -1,0 +1,9 @@
+---
+title: "Optimizing the German Credit system."
+author: "KOEHLE, Clarence and KELLER, Julien"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r child = c('intro.Rmd', 'data.Rmd', 'eda.Rmd', 'analysis.Rmd', 'concl.Rmd')}
+```

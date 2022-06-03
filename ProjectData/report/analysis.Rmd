@@ -1,0 +1,152 @@
+# Analysis
+
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+source(here::here("scripts/setup.R"))
+```
+
+* Answers to the research questions
+* Different methods considered
+* Competing approaches
+* Justifications
+
+
+# Modelization
+
+The first method that we want to use is the decision tree. However, we first need to visualize wich method of subsampling will work the best.
+To do so we will compare 4 different method through a ROC test. We can safely assume that for the CART, we will use the both-sampling method as it seems to provide the best result.
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+# for reproducing
+set.seed(1234)
+
+tree.rose <- rpart(RESPONSE~., data = GermanCredit_ROSE)
+tree.both <- rpart(RESPONSE~., data = GermanCredit_both)
+tree.over <- rpart(RESPONSE~., data = GermanCredit_over)
+tree.under <- rpart(RESPONSE~., data = GermanCredit_under)
+
+# prediction
+pred.tree.rose <- predict(tree.rose, newdata = GermanCredit)
+pred.tree.both <- predict(tree.both, newdata = GermanCredit)
+pred.tree.over <- predict(tree.over, newdata = GermanCredit)
+pred.tree.under <- predict(tree.under, newdata = GermanCredit)
+
+# AUC
+# rose
+roc.curve(GermanCredit$RESPONSE, pred.tree.rose[,2])
+# both
+roc.curve(GermanCredit$RESPONSE, pred.tree.both[,2],  add.roc = TRUE)
+# over
+roc.curve(GermanCredit$RESPONSE, pred.tree.over[,2], add.roc = TRUE)
+# under
+roc.curve(GermanCredit$RESPONSE, pred.tree.under[,2], add.roc = TRUE)
+
+
+```
+
+Now that we choose our method of subsampling, we divide our data a training set as well as a test set prior before creating our model. As we can see the this tree could probably be pruned to reduce the complexity  and potentially provide us with more precision. 
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1234)
+GermanCredit_both.tree <- rpart(RESPONSE~., data = GermanCredit_both.tr, method = "class")
+rpart.plot(GermanCredit_both.tree) +
+  theme(axis.text = element_text(size = 5))
+```
+
+In order to prune the tree correctly, we first need to take a glance at the complexity table. From this plot we see that a tree of size 7 is approximately identical as one of 9 but still maintains a lower complexity. We decide to use a cp = 0.016 for our tree. 
+```{r,echo=FALSE,message=FALSE, warning=FALSE}
+# pruning
+par(pty = "s")
+with(GermanCredit_both.tree, plot(cptable[,3], xlab = "Tree number", ylab = "Resubstitution Error (R)",
+                    type = "b"))
+## cross validation
+par(pty = "s")
+plotcp(GermanCredit_both.tree)
+with(GermanCredit_both.tree,{
+  lines(cptable[,2]+1, cptable[,3], type = "b", col = "red")
+  legend(3,1,c("Resub. Error","CV Error","min(CV Error)+1SE"),
+         lty = c(1,1,2), col = c("red","black","black"), bty = "n")
+})  
+```
+
+The final tree is the following. We see that the size has drastically reduced while in the meantime the accuracy seems to have increase. The confusion matrix allow us to see how well this method perform, we observe that both the sensitivity and specificity have a high score of ~70%, meaning that more than 2/3 of the time our model can predict correctly either a positive or negative response. 
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+GermanCredit_both.tree.prune <- prune(GermanCredit_both.tree, cp = 0.016)
+rpart.plot(GermanCredit_both.tree.prune)
+```
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+GermanCredit_both.tree.prune.predict <- predict(GermanCredit_both.tree.prune, 
+                                                newdata = GermanCredit_both.te, type = "class")
+table(Pred = GermanCredit_both.tree.prune.predict, Obs = GermanCredit_both.te$RESPONSE)
+
+confusionMatrix(data = GermanCredit_both.tree.prune.predict, GermanCredit_both.te$RESPONSE)
+```
+
+Looking at the variables importance ranking, we get the following information through Pareto:
+
+The first 7 variables amount for approximately 80% of the cumulative percentage of relevance. Those correspond to the following by descendant order: 
+
+HISTORY: 18.56%; CHK_ACCT: 17.24%; DURATION: 11.16%; SAV_ACCT: 10.36%; AGE: 9.6%; INSTALL_RATE: 7.29%; OWN_RES: 5.43%
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+GermanCredit_both.variables.importance <- varImp(GermanCredit_both.tree.prune) %>% arrange(desc(Overall)) %>%
+  as.data.frame()
+pareto.chart(GermanCredit_both.variables.importance$Overall, main = "Pareto chart for variable importance",
+             col = heat.colors(length(GermanCredit_both.variables.importance$Overall)))
+
+```
+Now that we have found promising results with our decision tree, we want to focus our attention into a neural network model and see if this method will provide us with better results. For this subject we will use 3 differents packages & compare which one produce the best output.
+
+The first method will be made through a neuralnet package
+
+```{r}
+nn <- neuralnet(Response_Yes + Response_No ~ DURATION + AMOUNT + AGE + 
+                  Foreigner_Yes + Foreigner_No + Telephone_Yes + Telephone_No +
+                  Job_0 + Job_1 + Job_2 + Job_3 + OWN_RES_Yes + OWN_RES_No +
+                  OTHER_INSTALL_Yes + OTHER_INSTALL_No + PROP_UNKN_NONE_Yes +
+                  PROP_UNKN_NONE_No + REAL_ESTATE_Yes + REAL_ESTATE_No +
+                  PRESENT_RESIDENT_0 + PRESENT_RESIDENT_1 + PRESENT_RESIDENT_2 +
+                  PRESENT_RESIDENT_3 +GUARANTOR_Yes + GUARANTOR_No +
+                  CO.APPLICANT_Yes + CO.APPLICANT_No + MALE_MAR_or_WID_Yes + MALE_MAR_or_WID_No +
+                  MALE_SINGLE_Yes + MALE_SINGLE_No+ MALE_DIV_Yes + MALE_DIV_No +
+                  EMPLOYMENT_0 + EMPLOYMENT_1 + EMPLOYMENT_2 + EMPLOYMENT_3 +
+                  EMPLOYMENT_4 + SAV_ACCT_0 + SAV_ACCT_1 + SAV_ACCT_2 + SAV_ACCT_3+
+                  SAV_ACCT_4 + RETRAINING_Yes + RETRAINING_No + EDUCATION_Yes + EDUCATION_No +
+                  RADIO.TV_Yes + RADIO.TV_No + FURNITURE_Yes + FURNITURE_No +USED_CAR_Yes + USED_CAR_No +
+                  NEW_CAR_Yes + NEW_CAR_No + CHK_ACCT_0 + CHK_ACCT_1 + CHK_ACCT_2 + CHK_ACCT_3  +
+                  NUM_DEPENDENTS_1 + NUM_DEPENDENTS_2 +NUM_CREDITS_1 + NUM_CREDITS_2 +NUM_CREDITS_3 + NUM_CREDITS_4 +
+                  INSTALL_RATE_1 + INSTALL_RATE_2 + INSTALL_RATE_3 + INSTALL_RATE_4, data = nnet_gctrain, hidden = c(2))
+
+plot(nn, rep = "best", cex = 0.5)
+```
+
+
+
+The next method will be made with the "Caret" package.
+
+```{r}
+fitcontrol <- trainControl(
+  ## 10-fold CV
+  method = "repeatedcv",
+  number = 10,
+  repeats = 10)
+```
+
+
+
+```{r}
+nnetFit <- caret::train(RESPONSE ~., data = GermanCredit_both.train, method = "nnet", preProcess = "range",
+                        trace = FALSE, trControl = trainControl(method = "cv"))
+nnetFit
+```
+```{r}
+confusionMatrix(predict(nnetFit, GermanCredit_both.test[,-31]), GermanCredit_both.test.classes)
+```
+
+
+
+
+
+````{r}
+
+gc.pred <- predict(nnetFit, GermanCredit_both.test[, -31])
+CrossTable(x = GermanCredit_both.test.classes, y = gc.pred, prop.chisq = FALSE)
+````

@@ -1,0 +1,495 @@
+# Data
+
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+source(here::here("scripts/setup.R"))
+```
+
+```{r, echo = FALSE, message = FALSE,warning = FALSE}
+GermanCredit_raw <- read.csv("../data/GermanCredit.csv", sep = ";")
+```
+
+* Sources:
+<https://moodle.unil.ch/course/view.php?id=22765>
+* Description:
+This dataset contains information on the credit score of applicants.
+
+* Wrangling/cleaning:
+For more clarity we will first remove the "Obs." column referring to the Observation number.
+We also have to reformat the "integer" variables that should become "factor"
+```{r, echo = FALSE, message = FALSE}
+GermanCredit_raw <- GermanCredit_raw %>% select(-1)
+```
+
+```{r, echo = FALSE, message = FALSE}
+# We are separating the variables that need to be transform into a factor formats
+GermanCredit_num <- GermanCredit_raw %>% select("DURATION", "AMOUNT","INSTALL_RATE", "AGE", "NUM_CREDITS", "NUM_DEPENDENTS")
+GermanCredit_fac <- GermanCredit_raw %>% select(-"DURATION", -"AMOUNT",-"INSTALL_RATE", -"AGE", -"NUM_CREDITS", -"NUM_DEPENDENTS")
+
+for (i in 1:ncol(GermanCredit_fac)){
+  if (class(GermanCredit_fac[,i])=="integer"){
+    GermanCredit_fac[,i] <- factor(GermanCredit_fac[,i])
+  }
+}
+GermanCredit <- cbind(GermanCredit_num, GermanCredit_fac)
+GermanCredit$NUM_DEPENDENTS <- factor(GermanCredit$NUM_DEPENDENTS)
+```
+
+
+```{r, echo = FALSE, message = FALSE,warning = FALSE }
+# We saw through the EDA that the data needed to be scaled.
+#Min Max Normalization
+GermanCredit$DURATION <-(GermanCredit$DURATION-min(GermanCredit$DURATION)) /
+  (max(GermanCredit$DURATION)-min(GermanCredit$DURATION))
+GermanCredit$AMOUNT <-(GermanCredit$AMOUNT-min(GermanCredit$AMOUNT)) /
+  (max(GermanCredit$AMOUNT)-min(GermanCredit$AMOUNT))
+GermanCredit$AGE <-(GermanCredit$AGE-min(GermanCredit$AGE)) /
+  (max(GermanCredit$AGE)-min(GermanCredit$AGE))
+```
+
+```{r, echo = FALSE, message = FALSE}
+#### we are going to try different method to see which one suits us the best. The choice will be made through a ROC comparison
+# over-sampling
+GermanCredit_over <- ovun.sample(RESPONSE~., data = GermanCredit, method = "over", N = 1400)$data
+
+# under-sampling
+GermanCredit_under <- ovun.sample(RESPONSE~., data = GermanCredit, method = "under", N = 600, seed = 1)$data
+
+# both
+GermanCredit_both <- ovun.sample(RESPONSE~., data = GermanCredit, method = "both", p = 0.5, N = 1000, seed = 1)$data
+
+# ROSE
+GermanCredit_ROSE <- ROSE(RESPONSE~., data = GermanCredit, seed = 1)$data
+```
+
+
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+# data split for decision tree
+# For reproducing 
+set.seed(1234)
+
+index.tr <- sample(1:nrow(GermanCredit_both), size = 2/3*nrow(GermanCredit_both), replace = FALSE)
+GermanCredit_both.tr <- GermanCredit_both[index.tr,]
+GermanCredit_both.te <- GermanCredit_both[-index.tr,]
+```
+
+
+````{r}
+# binarize the categorical variables in training
+
+################# Clark you better do it all 
+nnet_gctrain <- GermanCredit_both.tr
+nnet_gctest <- GermanCredit_both.te
+# binarize the categorical output
+# RESPONSE
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$RESPONSE == "Yes")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$RESPONSE == "No")
+names(nnet_gctrain)[32] <- "Response_Yes"
+names(nnet_gctrain)[33] <- "Response_No"
+
+# FOREIGN
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$FOREIGN == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$FOREIGN == "0")
+names(nnet_gctrain)[34] <- "Foreigner_Yes"
+names(nnet_gctrain)[35] <- "Foreigner_No"
+
+# TELEPHONE
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$TELEPHONE == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$TELEPHONE == "0")
+names(nnet_gctrain)[36] <- "Telephone_Yes"
+names(nnet_gctrain)[37] <- "Telephone_No"
+
+# Job
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$JOB == "0")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$JOB == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$JOB == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$JOB == "3")
+names(nnet_gctrain)[38] <- "Job_0"
+names(nnet_gctrain)[39] <- "Job_1"
+names(nnet_gctrain)[40] <- "Job_2"
+names(nnet_gctrain)[41] <- "Job_3"
+
+# OWN_RES
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$OWN_RES == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$OWN_RES == "0")
+names(nnet_gctrain)[42] <- "OWN_RES_Yes"
+names(nnet_gctrain)[43] <- "OWN_RES_No"
+
+# OTHER_INSTALL
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$OTHER_INSTALL == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$OTHER_INSTALL == "0")
+names(nnet_gctrain)[44] <- "OTHER_INSTALL_Yes"
+names(nnet_gctrain)[45] <- "OTHER_INSTALL_No"
+
+# PROP_UNKN_NONE
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$PROP_UNKN_NONE == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$PROP_UNKN_NONE == "0")
+names(nnet_gctrain)[46] <- "PROP_UNKN_NONE_Yes"
+names(nnet_gctrain)[47] <- "PROP_UNKN_NONE_No"
+
+# REAL_ESTATE
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$REAL_ESTATE == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$REAL_ESTATE == "0")
+names(nnet_gctrain)[48] <- "REAL_ESTATE_Yes"
+names(nnet_gctrain)[49] <- "REAL_ESTATE_No"
+
+# PRESENT_RESIDENT
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$PRESENT_RESIDENT == "0")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$PRESENT_RESIDENT == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$PRESENT_RESIDENT == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$PRESENT_RESIDENT == "3")
+names(nnet_gctrain)[50] <- "PRESENT_RESIDENT_0"
+names(nnet_gctrain)[51] <- "PRESENT_RESIDENT_1"
+names(nnet_gctrain)[52] <- "PRESENT_RESIDENT_2"
+names(nnet_gctrain)[53] <- "PRESENT_RESIDENT_3"
+
+# GUARANTOR
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$GUARANTOR == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$GUARANTOR == "0")
+names(nnet_gctrain)[54] <- "GUARANTOR_Yes"
+names(nnet_gctrain)[55] <- "GUARANTOR_No"
+
+# CO.APPLICANT
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$CO.APPLICANT == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$CO.APPLICANT == "0")
+names(nnet_gctrain)[56] <- "CO.APPLICANT_Yes"
+names(nnet_gctrain)[57] <- "CO.APPLICANT_No"
+
+#MALE_MAR_OR_WID
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$MALE_MAR_or_WID == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$MALE_MAR_or_WID == "0")
+names(nnet_gctrain)[58] <- "MALE_MAR_or_WID_Yes"
+names(nnet_gctrain)[59] <- "MALE_MAR_or_WID_No"
+
+# MALE_SINGLE
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$MALE_SINGLE == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$MALE_SINGLE == "0")
+names(nnet_gctrain)[60] <- "MALE_SINGLE_Yes"
+names(nnet_gctrain)[61] <- "MALE_SINGLE_No"
+
+# MALE_DIV
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$MALE_DIV == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$MALE_DIV == "0")
+names(nnet_gctrain)[62] <- "MALE_DIV_Yes"
+names(nnet_gctrain)[63] <- "MALE_DIV_No"
+
+# EMPLOYMENT
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EMPLOYMENT == "0")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EMPLOYMENT == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EMPLOYMENT == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EMPLOYMENT == "3")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EMPLOYMENT == "4")
+names(nnet_gctrain)[64] <- "EMPLOYMENT_0"
+names(nnet_gctrain)[65] <- "EMPLOYMENT_1"
+names(nnet_gctrain)[66] <- "EMPLOYMENT_2"
+names(nnet_gctrain)[67] <- "EMPLOYMENT_3"
+names(nnet_gctrain)[68] <- "EMPLOYMENT_4"
+
+# SAV_ACCT
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$SAV_ACCT == "0")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$SAV_ACCT == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$SAV_ACCT == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$SAV_ACCT == "3")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$SAV_ACCT == "4")
+names(nnet_gctrain)[69] <- "SAV_ACCT_0"
+names(nnet_gctrain)[70] <- "SAV_ACCT_1"
+names(nnet_gctrain)[71] <- "SAV_ACCT_2"
+names(nnet_gctrain)[72] <- "SAV_ACCT_3"
+names(nnet_gctrain)[73] <- "SAV_ACCT_4"
+
+# RETRAINING
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$RETRAINING == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$RETRAINING == "0")
+names(nnet_gctrain)[74] <- "RETRAINING_Yes"
+names(nnet_gctrain)[75] <- "RETRAINING_No"
+
+# EDUCATION
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EDUCATION == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$EDUCATION == "0")
+names(nnet_gctrain)[76] <- "EDUCATION_Yes"
+names(nnet_gctrain)[77] <- "EDUCATION_No"
+
+# RADIO
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$RADIO.TV == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$RADIO.TV == "0")
+names(nnet_gctrain)[78] <- "RADIO.TV_Yes"
+names(nnet_gctrain)[79] <- "RADIO.TV_No"
+
+# FURNITURE
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$FURNITURE == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$FURNITURE == "0")
+names(nnet_gctrain)[80] <- "FURNITURE_Yes"
+names(nnet_gctrain)[81] <- "FURNITURE_No"
+
+# USED_CAR
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$USED_CAR == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$USED_CAR == "0")
+names(nnet_gctrain)[82] <- "USED_CAR_Yes"
+names(nnet_gctrain)[83] <- "USED_CAR_No"
+
+# NEW_CAR
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NEW_CAR == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NEW_CAR == "0")
+names(nnet_gctrain)[84] <- "NEW_CAR_Yes"
+names(nnet_gctrain)[85] <- "NEW_CAR_No"
+
+# CHK_ACCT
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$CHK_ACCT == "0")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$CHK_ACCT == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$CHK_ACCT == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$CHK_ACCT == "3")
+names(nnet_gctrain)[86] <- "CHK_ACCT_0"
+names(nnet_gctrain)[87] <- "CHK_ACCT_1"
+names(nnet_gctrain)[88] <- "CHK_ACCT_2"
+names(nnet_gctrain)[89] <- "CHK_ACCT_3"
+
+# NUM_DEPENDENTS
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NUM_DEPENDENTS == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NUM_DEPENDENTS == "2")
+names(nnet_gctrain)[90] <- "NUM_DEPENDENTS_1"
+names(nnet_gctrain)[91] <- "NUM_DEPENDENTS_2"
+
+# NUM_CREDIT
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NUM_CREDITS == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NUM_CREDITS == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NUM_CREDITS == "3")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$NUM_CREDITS == "4")
+names(nnet_gctrain)[92] <- "NUM_CREDITS_1"
+names(nnet_gctrain)[93] <- "NUM_CREDITS_2"
+names(nnet_gctrain)[94] <- "NUM_CREDITS_3"
+names(nnet_gctrain)[95] <- "NUM_CREDITS_4"
+
+#
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$INSTALL_RATE == "1")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$INSTALL_RATE == "2")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$INSTALL_RATE == "3")
+nnet_gctrain <- cbind(nnet_gctrain, GermanCredit_both.tr$INSTALL_RATE == "4")
+names(nnet_gctrain)[96] <- "INSTALL_RATE_1"
+names(nnet_gctrain)[97] <- "INSTALL_RATE_2"
+names(nnet_gctrain)[98] <- "INSTALL_RATE_3"
+names(nnet_gctrain)[99] <- "INSTALL_RATE_4"
+
+summary(nnet_gctrain)
+
+##########  binarize in test 
+
+# RESPONSE
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$RESPONSE == "Yes")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$RESPONSE == "No")
+names(nnet_gctest)[32] <- "Response_Yes"
+names(nnet_gctest)[33] <- "Response_No"
+
+# FOREIGN
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$FOREIGN == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$FOREIGN == "0")
+names(nnet_gctest)[34] <- "Foreigner_Yes"
+names(nnet_gctest)[35] <- "Foreigner_No"
+
+# TELEPHONE
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$TELEPHONE == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$TELEPHONE == "0")
+names(nnet_gctest)[36] <- "Telephone_Yes"
+names(nnet_gctest)[37] <- "Telephone_No"
+
+# Job
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$JOB == "0")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$JOB == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$JOB == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$JOB == "3")
+names(nnet_gctest)[38] <- "Job_0"
+names(nnet_gctest)[39] <- "Job_1"
+names(nnet_gctest)[40] <- "Job_2"
+names(nnet_gctest)[41] <- "Job_3"
+
+# OWN_RES
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$OWN_RES == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$OWN_RES == "0")
+names(nnet_gctest)[42] <- "OWN_RES_Yes"
+names(nnet_gctest)[43] <- "OWN_RES_No"
+
+# OTHER_INSTALL
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$OTHER_INSTALL == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$OTHER_INSTALL == "0")
+names(nnet_gctest)[44] <- "OTHER_INSTALL_Yes"
+names(nnet_gctest)[45] <- "OTHER_INSTALL_No"
+
+# PROP_UNKN_NONE
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$PROP_UNKN_NONE == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$PROP_UNKN_NONE == "0")
+names(nnet_gctest)[46] <- "PROP_UNKN_NONE_Yes"
+names(nnet_gctest)[47] <- "PROP_UNKN_NONE_No"
+
+# REAL_ESTATE
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$REAL_ESTATE == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$REAL_ESTATE == "0")
+names(nnet_gctest)[48] <- "REAL_ESTATE_Yes"
+names(nnet_gctest)[49] <- "REAL_ESTATE_No"
+
+# PRESENT_RESIDENT
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$PRESENT_RESIDENT == "0")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$PRESENT_RESIDENT == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$PRESENT_RESIDENT == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$PRESENT_RESIDENT == "3")
+names(nnet_gctest)[50] <- "PRESENT_RESIDENT_0"
+names(nnet_gctest)[51] <- "PRESENT_RESIDENT_1"
+names(nnet_gctest)[52] <- "PRESENT_RESIDENT_2"
+names(nnet_gctest)[53] <- "PRESENT_RESIDENT_3"
+
+# GUARANTOR
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$GUARANTOR == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$GUARANTOR == "0")
+names(nnet_gctest)[54] <- "GUARANTOR_Yes"
+names(nnet_gctest)[55] <- "GUARANTOR_No"
+
+# CO.APPLICANT
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$CO.APPLICANT == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$CO.APPLICANT == "0")
+names(nnet_gctest)[56] <- "CO.APPLICANT_Yes"
+names(nnet_gctest)[57] <- "CO.APPLICANT_No"
+
+#MALE_MAR_OR_WID
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$MALE_MAR_or_WID == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$MALE_MAR_or_WID == "0")
+names(nnet_gctest)[58] <- "MALE_MAR_or_WID_Yes"
+names(nnet_gctest)[59] <- "MALE_MAR_or_WID_No"
+
+# MALE_SINGLE
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$MALE_SINGLE == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$MALE_SINGLE == "0")
+names(nnet_gctest)[60] <- "MALE_SINGLE_Yes"
+names(nnet_gctest)[61] <- "MALE_SINGLE_No"
+
+# MALE_DIV
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$MALE_DIV == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$MALE_DIV == "0")
+names(nnet_gctest)[62] <- "MALE_DIV_Yes"
+names(nnet_gctest)[63] <- "MALE_DIV_No"
+
+# EMPLOYMENT
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EMPLOYMENT == "0")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EMPLOYMENT == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EMPLOYMENT == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EMPLOYMENT == "3")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EMPLOYMENT == "4")
+names(nnet_gctest)[64] <- "EMPLOYMENT_0"
+names(nnet_gctest)[65] <- "EMPLOYMENT_1"
+names(nnet_gctest)[66] <- "EMPLOYMENT_2"
+names(nnet_gctest)[67] <- "EMPLOYMENT_3"
+names(nnet_gctest)[68] <- "EMPLOYMENT_4"
+
+# SAV_ACCT
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$SAV_ACCT == "0")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$SAV_ACCT == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$SAV_ACCT == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$SAV_ACCT == "3")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$SAV_ACCT == "4")
+names(nnet_gctest)[69] <- "SAV_ACCT_0"
+names(nnet_gctest)[70] <- "SAV_ACCT_1"
+names(nnet_gctest)[71] <- "SAV_ACCT_2"
+names(nnet_gctest)[72] <- "SAV_ACCT_3"
+names(nnet_gctest)[73] <- "SAV_ACCT_4"
+
+# RETRAINING
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$RETRAINING == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$RETRAINING == "0")
+names(nnet_gctest)[74] <- "RETRAINING_Yes"
+names(nnet_gctest)[75] <- "RETRAINING_No"
+
+# EDUCATION
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EDUCATION == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$EDUCATION == "0")
+names(nnet_gctest)[76] <- "EDUCATION_Yes"
+names(nnet_gctest)[77] <- "EDUCATION_No"
+
+# RADIO
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$RADIO.TV == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$RADIO.TV == "0")
+names(nnet_gctest)[78] <- "RADIO.TV_Yes"
+names(nnet_gctest)[79] <- "RADIO.TV_No"
+
+# FURNITURE
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$FURNITURE == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$FURNITURE == "0")
+names(nnet_gctest)[80] <- "FURNITURE_Yes"
+names(nnet_gctest)[81] <- "FURNITURE_No"
+
+# USED_CAR
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$USED_CAR == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$USED_CAR == "0")
+names(nnet_gctest)[82] <- "USED_CAR_Yes"
+names(nnet_gctest)[83] <- "USED_CAR_No"
+
+# NEW_CAR
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NEW_CAR == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NEW_CAR == "0")
+names(nnet_gctest)[84] <- "NEW_CAR_Yes"
+names(nnet_gctest)[85] <- "NEW_CAR_No"
+
+# CHK_ACCT
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$CHK_ACCT == "0")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$CHK_ACCT == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$CHK_ACCT == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$CHK_ACCT == "3")
+names(nnet_gctest)[86] <- "CHK_ACCT_0"
+names(nnet_gctest)[87] <- "CHK_ACCT_1"
+names(nnet_gctest)[88] <- "CHK_ACCT_2"
+names(nnet_gctest)[89] <- "CHK_ACCT_3"
+
+# NUM_DEPENDENTS
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NUM_DEPENDENTS == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NUM_DEPENDENTS == "2")
+names(nnet_gctest)[90] <- "NUM_DEPENDENTS_1"
+names(nnet_gctest)[91] <- "NUM_DEPENDENTS_2"
+
+# NUM_CREDIT
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NUM_CREDITS == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NUM_CREDITS == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NUM_CREDITS == "3")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$NUM_CREDITS == "4")
+names(nnet_gctest)[92] <- "NUM_CREDITS_1"
+names(nnet_gctest)[93] <- "NUM_CREDITS_2"
+names(nnet_gctest)[94] <- "NUM_CREDITS_3"
+names(nnet_gctest)[95] <- "NUM_CREDITS_4"
+
+#
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$INSTALL_RATE == "1")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$INSTALL_RATE == "2")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$INSTALL_RATE == "3")
+nnet_gctest <- cbind(nnet_gctest, GermanCredit_both.te$INSTALL_RATE == "4")
+names(nnet_gctest)[96] <- "INSTALL_RATE_1"
+names(nnet_gctest)[97] <- "INSTALL_RATE_2"
+names(nnet_gctest)[98] <- "INSTALL_RATE_3"
+names(nnet_gctest)[99] <- "INSTALL_RATE_4"
+
+```
+
+
+
+
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+# data split for caret neural network
+# For reproducing
+set.seed(1234)
+
+trainindex <- createDataPartition(GermanCredit_both$RESPONSE, p = 2/3, 
+                                  list = FALSE,
+                                  time = 1)
+
+# training
+GermanCredit_both.train <- GermanCredit_both[trainindex,]
+GermanCredit_both.train.classes <- GermanCredit_both[trainindex, 31]
+
+# test
+GermanCredit_both.test <- GermanCredit_both[-trainindex, ]
+GermanCredit_both.test.classes <- GermanCredit_both[-trainindex, 31]
+
+GermanCredit_both.train
+```
+
+```{r}
+# creating dummies variables for  caret neural network
+
+train_dummies <- dummyVars(RESPONSE~., data = GermanCredit_both.train)
+test_dummies <- dummyVars(RESPONSE~., data = GermanCredit_both.test)
+```

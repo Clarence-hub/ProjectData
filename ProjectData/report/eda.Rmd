@@ -1,0 +1,197 @@
+# Exploratory data analysis
+
+```{r, echo = FALSE, message = FALSE}
+source(here::here("scripts/setup.R"))
+```
+
+# Basics informations: 
+
+* This dataset contains 1000 observation & 31 variables.
+* In its raw format, we can observe that all the variables are of "integer" formats.
+* In this example we are showing variables that are in the incorrect formats
+```{r, echo = FALSE, message = FALSE}
+str(GermanCredit_raw[c("CHK_ACCT", "HISTORY", "NEW_CAR", "USED_CAR")])
+```
+After transformation, of those variables to match their desire format, we get a data set with the rights formats:
+```{r, echo = FALSE, message = FALSE}
+str(GermanCredit[c("CHK_ACCT", "HISTORY", "NEW_CAR", "USED_CAR")])
+```
+
+DfSummary tables:
+
+From the summary we can observe the following information:
+
+* The target variable "RESPONSE" is unevenly distributed, meaning that we will need to sub-sample our data set while modeling it. 
+* We can observe that "NUM_CREDITS"; "EDUCATION"; "GUARANTOR"; "JOB" are categorial variables with more than two factors levels, however their distribution are uneven, thus in each case a factor level is close to unsignificance in term of proportion. 
+* Finally the dfSummary table shows us that none of the numerical variable follows a Gaussian distribution, thereby we will need to scale them. For this case, we will use a min/max scaling.
+```{r, echo = FALSE, message = FALSE}
+view(dfSummary(GermanCredit, style="grid",plain.ascii = FALSE, tmp.img.dir = "/tmp"))
+```
+
+Before exploring this dataset, we want to ask ourself the following question: Is the target variable balanced ?
+It turns out that this is not the case, thereby prior to our modelization, we will need to subsample this data set.
+```{r, echo = FALSE, message = FALSE}
+table(GermanCredit$RESPONSE)
+```
+
+
+Boxplot informations for numerical value in regard to the target "RESPONSE":
+* Except for the variable "INSTALL_RATE" & "Duration" the rest of the variables seem to have close median results.
+
+```{r, echo = FALSE, message = FALSE}
+lblue <- "#6699CC"
+par(mfrow = c(2, 3))
+boxplot(DURATION ~ RESPONSE, data = GermanCredit, xlab = "Duration", notch = T,
+        varwidth = T, col = lblue)
+boxplot(AMOUNT ~ RESPONSE, data = GermanCredit, xlab = "Amount", varwidth = T, col = lblue)
+boxplot(INSTALL_RATE ~ RESPONSE, data = GermanCredit, xlab = "Install_rate", varwidth = T, col = lblue)
+boxplot(AGE ~ RESPONSE, data = GermanCredit, xlab = "Age", varwidth = T, col = lblue)
+boxplot(NUM_CREDITS ~ RESPONSE, data = GermanCredit, xlab = "Num_credit", varwidth = T, col = lblue)
+```
+
+# Correlation
+
+We now desire to take a glance a the correlation matrix between the numerical variables.
+From this plot we understand the following information:
+
+* AMOUNT & DURATION have the highest positive correlation: 62.5%
+* AGE & NUM_CREDIT constitute the second highest positive correlation however the value is insignficant compare to the prior: 14.26%
+
+On the other side of the spectrum for negative correlation:
+
+* AMOUNT &  INSTALL_RATE are the most signfiicant with a value of: -27.13%
+
+```{r, echo = FALSE, message = FALSE}
+corr_matrix <-cor(x = as.matrix(GermanCredit_num), method = "pearson", use = "pairwise.complete.obs")
+melted_corr_matrix <- melt(corr_matrix, na.rm = TRUE)
+ggplot(data = melted_corr_matrix, aes(x = Var1, y = Var2, fill = value))+
+  geom_tile()+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1,1), space = "Lab",
+                       name = "Pearson\nCorrelation")+
+  theme_minimal()+
+  theme(axis.text = element_text(angle = 45, vjust = 1,
+                                 size = 12, hjust = 1))+
+  coord_fixed()
+```
+
+Another way of showing the correaltion is through the following plot:
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+
+x<-inspect_cor(GermanCredit[,-31])
+show_plot(x, col_palette=4)
+```
+
+
+We then wish to look at the correlation between the categorical variables. 
+For this particular plot, it is important to note that the target variable(RESPONSE) is include while for the numerical correlation matrix it was not the case. 
+From this factor matrix, we get insight on the following information for the relationship with RESPONSE:
+
+* The highest positive correlation is with CHK_ACCT3: 32%
+* The highest negative correlation is with CHK_ACCT0: -26%
+
+This information is interesting in the sens that:
+
+* CHK_ACCT0: < 0 DM in a checking account 
+* CHK_ACCT3: No checking account
+
+Thus for the bank an applicant without a checking is more interesting than a client with more than 200DM. However, this might become detrimental if the bank can not convince the applicant to open a checking account, in which case it ends up with the negative effect found with CHK_ACCT0.
+Finally, we are witnessing an intriguing positive relationship with STATUS:
+
+* HISTORY4: ~20%
+
+The reason why we consider this correlation weird is because this variables corresponds to a situation where an applicant is in a "critical" state in the bank eyes. Meaning, that the applicant has a clear pattern of being late to pay off. 
+
+```{r, echo = FALSE, message = FALSE}
+model.matrix(~0+., data=GermanCredit_fac) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag =T, type="lower", lab=TRUE, lab_size=0.8)+
+  theme(axis.text.x = element_text(size = 4),
+        axis.text.y = element_text(size = 5))
+```
+
+# Distribution
+
+We now wish to dig deeper into potential relationship among our variables by theme in term of distribution over our target REPONSE.
+Our first interest concerns the marital status of the applicant:
+
+* If a man is not divorced or is, there's still a higher chance for him to have a bad credit score.
+* If a man is not single, the probability that he'll have a bad /good credit score is pretty close. However, if he's single, then there is a higher chance that he'll have a good credit score
+* If a man is neither married nor widower, the result would be close to those with a non-divorced man. However, should he be married or widower, then there would be a small but still higher chance for him to have a good credit score.
+
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(MALE_DIV, MALE_SINGLE, MALE_MAR_or_WID, RESPONSE) %>%
+  ggpairs()
+```
+
+We now want to look a the purpose of the credit: It is interesting to see that no matter the purpose of a credit taken, if the binary response is "yes" the chance for a good credit will be higher. Nonetheless, it is also we also to see that the chance of having a applicant with a bad credit score is still higher.
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(NEW_CAR, USED_CAR, FURNITURE, RADIO.TV, EDUCATION, RETRAINING, RESPONSE) %>%
+  ggpairs(proportions = "auto") +
+  theme(axis.text.y  = element_text(size = 4),
+        axis.text.y.right = element_text(size = 1))
+```
+Looking at the distribution for past history, we get the following information:
+
+* What we found out with the factor matrix is confirmed for CHK_ACCT
+* There is a highest probability of having an applicant with a  RESPONSE of type 1 (meaning that he has a good credit score) if his number of credit is of level 1.
+* While we found out that REPONSE had a positive correlation with HISTORY4, we can see that in term of distribution, there is a higher chance for an applicant to have a good score if its level is of 2 (Existing credit to be paid, always on time).
+* Finally, an individual with no other installment is more incline of having a good credit score.
+
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(CHK_ACCT, NUM_CREDITS, HISTORY, INSTALL_RATE, OTHER_INSTALL, RESPONSE) %>%
+  ggpairs()
+```
+
+Concerning the guarantee:
+
+* It seems that the bank is better off if the applicant has no co-applicant which is a surprise.
+* The same applies for guarantor.
+* The behavior of the distribution for PRESENT_RESIDENT is closely identical for either RESPONSE.
+
+Finally, for SAV_ACCT the bank may want to invest for level 1 & 4:
+
+* Level 1: < 100 DM in a saving account
+* Level 4: unknown / no saving account. 
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(CO.APPLICANT, GUARANTOR, PRESENT_RESIDENT,SAV_ACCT, RESPONSE) %>%
+  ggpairs()
+```
+
+In regard of the real estate:
+
+In each case, except for OWN_RES the proportion of binary response 0 is higher. Nonetheless the target variables RESPONSE always has a higher probability of showing 1.
+This of course, is explained by the unbalanced data set that we have. 
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(REAL_ESTATE, OWN_RES, PROP_UNKN_NONE, RENT, RESPONSE) %>%
+  ggpairs()
+```
+
+Looking at the employment & dependency:
+
+* It is interesting to see that there seems to be  a higher chance for a good credit score if the applicant has been employed between 4-7 years.
+* The same goes for applicant who's category under job is "un-skilled - resident" than for the other.
+* For the dependent category, there's a higher chance for an applicant to have a good credit score if the number of liable individual is close to 1.
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(EMPLOYMENT, JOB, NUM_DEPENDENTS, RESPONSE) %>%
+  ggpairs()
+```
+
+Concerning foreigners applicant:
+
+For this category we can see that proportion of bad credit score is way more significant if the applicant is foreigner. However, the probability that he'll have a good credit score is lower if he's not foreigner which is pretty interesting
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(FOREIGN, RESPONSE) %>%
+  ggpairs(proportions = "auto")
+```
+
+In regard of phone: 
+
+We can see that having a phone would drasticly increase the probability that the applicant would have a good credit score
+```{r, echo = FALSE, message = FALSE}
+GermanCredit %>% select(TELEPHONE,RESPONSE) %>%
+  ggpairs(proportions = "auto")
+```
+
+
+
